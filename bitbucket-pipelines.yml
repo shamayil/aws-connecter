@@ -1,0 +1,70 @@
+pipelines:
+  branches:
+    master:
+      - step:
+          name: Login to aws production ecr
+          image: amazon/aws-cli
+          services:
+            - docker
+          script:
+            - export AWS_ACCESS_KEY_ID=$PROD_AWS_ACCESS_KEY_ID
+            - export AWS_SECRET_ACCESS_KEY=$PROD_AWS_SECRET_ACCESS_KEY
+            - export AWS_DEFAULT_REGION=$PROD_AWS_DEFAULT_REGION
+            - export REGISTRY_URL=$PROD_REGISTRY_URL
+            # aws login
+            - aws ecr get-login-password | docker login --username AWS --password-stdin $REGISTRY_URL
+            - cp /root/.docker/config.json .
+          artifacts:
+            - config.json
+      - step:
+          name: Build & Push nginx proxy image to production
+          image: amazon/aws-cli
+          services:
+            - docker
+          script:
+            - export REGISTRY_URL=$PROD_REGISTRY_URL
+            - BITBUCKET_COMMIT_SHORT="${BITBUCKET_COMMIT::7}"
+            - mkdir /root/.docker && mv config.json /root/.docker/
+            # Correctly formatted echo statements
+            - echo "BITBUCKET_COMMIT_SHORT=$BITBUCKET_COMMIT_SHORT"
+            - echo "PRODUCTION_TASK_NGINX_PROXY=$PRODUCTION_TASK_NGINX_PROXY"
+            - echo "REGISTRY_URL=$REGISTRY_URL"
+            - docker build -t $REGISTRY_URL/${PRODUCTION_TASK_NGINX_PROXY}-${BITBUCKET_COMMIT_SHORT} -f proxy/nginx/Dockerfile .
+            - docker push $REGISTRY_URL/${PRODUCTION_TASK_NGINX_PROXY}-${BITBUCKET_COMMIT_SHORT}
+      - step:
+          name: Build & Push php app image to production
+          image: amazon/aws-cli
+          services:
+            - docker
+          script:
+            - export REGISTRY_URL=$PROD_REGISTRY_URL
+            - BITBUCKET_COMMIT_SHORT="${BITBUCKET_COMMIT::7}"
+            - mkdir /root/.docker && mv config.json /root/.docker/
+            - docker build -t $REGISTRY_URL/${PRODUCTION_TASK_PHP_APP}-${BITBUCKET_COMMIT_SHORT} -f proxy/php/Dockerfile .
+            - docker push $REGISTRY_URL/${PRODUCTION_TASK_PHP_APP}-${BITBUCKET_COMMIT_SHORT}
+      - step:
+          name: terraform plan on production
+          image: hashicorp/terraform:latest
+          services:
+            - docker
+          script:
+            - export AWS_ACCESS_KEY_ID=$PROD_AWS_ACCESS_KEY_ID
+            - export AWS_SECRET_ACCESS_KEY=$PROD_AWS_SECRET_ACCESS_KEY
+            - export AWS_DEFAULT_REGION=$PROD_AWS_DEFAULT_REGION
+            - BITBUCKET_COMMIT_SHORT=$(echo "${BITBUCKET_COMMIT}" | cut -c 1-7)
+            - cd iac
+            - terraform init -backend-config environment/production/backend.hcl
+            - terraform plan -var=nginx_image_tag="${PRODUCTION_TASK_NGINX_PROXY}-${BITBUCKET_COMMIT_SHORT}" -var=phpapp_image_tag="${PRODUCTION_TASK_PHP_APP}-${BITBUCKET_COMMIT_SHORT}" -var-file environment/production/terraform.tfvars
+      - step:
+          name: terraform apply to production
+          image: hashicorp/terraform:latest
+          services:
+            - docker
+          script:
+            - export AWS_ACCESS_KEY_ID=$PROD_AWS_ACCESS_KEY_ID
+            - export AWS_SECRET_ACCESS_KEY=$PROD_AWS_SECRET_ACCESS_KEY
+            - export AWS_DEFAULT_REGION=$PROD_AWS_DEFAULT_REGION
+            - BITBUCKET_COMMIT_SHORT=$(echo "${BITBUCKET_COMMIT}" | cut -c 1-7)
+            - cd iac
+            - terraform init -backend-config environment/production/backend.hcl
+            - terraform apply -auto-approve -var=nginx_image_tag="${PRODUCTION_TASK_NGINX_PROXY}-${BITBUCKET_COMMIT_SHORT}" -var=phpapp_image_tag="${PRODUCTION_TASK_PHP_APP}-${BITBUCKET_COMMIT_SHORT}" -var-file="environment/production/terraform.tfvars"

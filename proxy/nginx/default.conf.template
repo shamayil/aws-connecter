@@ -1,0 +1,39 @@
+server {
+	listen 80;
+
+    server_name localhost;
+	root /var/www/html/public;
+
+	index index.html index.php;
+
+    client_max_body_size 0;
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+	location ~ [^/]\.php(/|$) {
+
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        if (!-f $document_root$fastcgi_script_name) {
+            return 404;
+        }
+
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param PATH_TRANSLATED $document_root$fastcgi_path_info;
+        fastcgi_read_timeout 1200;
+        fastcgi_pass ${BACKEND_URL};
+        fastcgi_index index.php;
+        fastcgi_buffers 16 32k;
+        fastcgi_buffer_size 64k;
+    }
+
+}

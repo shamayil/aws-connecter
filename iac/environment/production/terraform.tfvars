@@ -1,0 +1,14 @@
+region           = "eu-west-2"
+project          = "connect-server"
+environment      = "production"
+service_name     = "service"
+hostzone         = "iposg.com"
+cpu              = 256
+memory           = 512
+desired_count    = 1
+host_header      = "aws-connect.iposg.com" # ALB Value
+subdomain_name   = "aws-connect" # Route53 Value
+#nginx_image_tag  = "groceryspot-portal-production-service:nginx-1916370"
+#phpapp_image_tag = "groceryspot-portal-production-service:php-1916370"
+database_secrets = "iposg-database-secrets"
+common_secrets   = "common-secret-keys"
